@@ -477,6 +477,11 @@ private enum MoveDirection {
 }
 
 private struct NumericMetricCell: View {
+    private let heatLowDark = Color(red: 0.87, green: 0.30, blue: 0.30)
+    private let heatLowSoft = Color(red: 1.0, green: 0.58, blue: 0.58)
+    private let heatMid = Color(red: 1.0, green: 1.0, blue: 1.0)
+    private let heatHighSoft = Color(red: 0.72, green: 1.0, blue: 0.72)
+    private let heatHighDark = Color(red: 0.34, green: 0.78, blue: 0.34)
     @State private var text: String
     let value: Double
     let isFocused: Bool
@@ -507,6 +512,7 @@ private struct NumericMetricCell: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Color(red: 0.15, green: 0.15, blue: 0.15))
                 .textFieldStyle(.plain)
+                .textSelection(.disabled)
                 .padding(.horizontal, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -557,32 +563,77 @@ private struct NumericMetricCell: View {
 
     private func heatColor(for value: Double) -> Color {
         let t = min(max((value - 1) / 9, 0), 1)
-        if t < 0.5 {
-            let k = t / 0.5
-            return Color(red: 1.0, green: 0.45 + 0.55 * k, blue: 0.45 + 0.55 * k).opacity(0.72)
+        let lowExtremeEnd = 2.0 / 9.0    // values 1-3
+        let highExtremeStart = 7.0 / 9.0 // values 8-10
+
+        if t <= lowExtremeEnd {
+            let k = t / lowExtremeEnd
+            return blendedColor(from: heatLowDark, to: heatLowSoft, fraction: k).opacity(0.78)
         }
-        let k = (t - 0.5) / 0.5
-        return Color(red: 1.0 - 0.48 * k, green: 1.0, blue: 1.0 - 0.48 * k).opacity(0.72)
+        if t < 0.5 {
+            let k = (t - lowExtremeEnd) / (0.5 - lowExtremeEnd)
+            return blendedColor(from: heatLowSoft, to: heatMid, fraction: k).opacity(0.74)
+        }
+        if t < highExtremeStart {
+            let k = (t - 0.5) / (highExtremeStart - 0.5)
+            return blendedColor(from: heatMid, to: heatHighSoft, fraction: k).opacity(0.74)
+        }
+
+        let k = (t - highExtremeStart) / (1.0 - highExtremeStart)
+        return blendedColor(from: heatHighSoft, to: heatHighDark, fraction: k).opacity(0.78)
+    }
+
+    private func blendedColor(from: Color, to: Color, fraction: Double) -> Color {
+        let f = min(max(fraction, 0), 1)
+        #if canImport(AppKit)
+        let fromNS = NSColor(from).usingColorSpace(.sRGB) ?? .black
+        let toNS = NSColor(to).usingColorSpace(.sRGB) ?? .black
+        #else
+        let fromNS = NSColor.black
+        let toNS = NSColor.black
+        #endif
+
+        var fromR: CGFloat = 0
+        var fromG: CGFloat = 0
+        var fromB: CGFloat = 0
+        var fromA: CGFloat = 0
+        var toR: CGFloat = 0
+        var toG: CGFloat = 0
+        var toB: CGFloat = 0
+        var toA: CGFloat = 0
+
+        fromNS.getRed(&fromR, green: &fromG, blue: &fromB, alpha: &fromA)
+        toNS.getRed(&toR, green: &toG, blue: &toB, alpha: &toA)
+
+        let red = fromR + (toR - fromR) * f
+        let green = fromG + (toG - fromG) * f
+        let blue = fromB + (toB - fromB) * f
+        let alpha = fromA + (toA - fromA) * f
+
+        return Color(.sRGB, red: red, green: green, blue: blue, opacity: alpha)
     }
 }
 
 private struct YearProgressDonut: View {
     let progress: Double
     let tintColor: Color
+    private let ringLineWidth: CGFloat = 10
 
     var body: some View {
         ZStack {
             Circle()
-                .stroke(tintColor.opacity(0.18), lineWidth: 11)
+                .stroke(tintColor.opacity(0.18), lineWidth: ringLineWidth)
+                .padding(ringLineWidth / 2)
             Circle()
                 .trim(from: 0, to: progress)
-                .stroke(tintColor, style: StrokeStyle(lineWidth: 11, lineCap: .round))
-                .rotationEffect(.degrees(-90))
+                .stroke(tintColor, style: StrokeStyle(lineWidth: ringLineWidth, lineCap: .round))
+                .padding(ringLineWidth / 2)
+                .rotationEffect(Angle.degrees(-90))
             Text("\(Int((progress * 100).rounded()))%")
-                .font(.title2.weight(.heavy))
+                .font(.title3.weight(.heavy))
                 .foregroundStyle(Color(red: 0.25, green: 0.25, blue: 0.28))
         }
-        .frame(width: 78, height: 78)
+        .frame(width: 72, height: 72)
         .padding(4)
         .background(Color.white.opacity(0.95))
         .clipShape(RoundedRectangle(cornerRadius: 8))

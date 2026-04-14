@@ -17,7 +17,9 @@ enum ScoringEngine {
     }
 
     static func wlb(productivity: Double, relaxSport: Double) -> Double {
-        0.7 * max(productivity, relaxSport) + 0.3 * (10.0 - abs(productivity - relaxSport))
+        let mean = (productivity + relaxSport) / 2.0
+        let imbalancePenalty = abs(productivity - relaxSport) / 2.0
+        return min(max(mean - imbalancePenalty, 1.0), 10.0)
     }
 
     static func scoredSeries(_ entries: [DailyEntry]) -> [ScoredEntry] {
