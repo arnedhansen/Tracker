@@ -43,9 +43,9 @@ struct ContentView: View {
                 proxy.size.width - horizontalPaddingLeading - horizontalPaddingTrailing,
                 700
             )
-            let bottomContentWidth = max(availablePanelWidth - horizontalGap, 300)
-            let miniPanelWidth = bottomContentWidth * (1.0 / 3.0)
-            let tablePanelWidth = max(bottomContentWidth - miniPanelWidth, 300)
+            let bottomRowUsableWidth = max(availablePanelWidth - horizontalGap, 300)
+            let tablePanelWidth = bottomRowUsableWidth * 0.75
+            let miniPanelWidth = bottomRowUsableWidth * 0.25
             let availableContentHeight = max(
                 proxy.size.height - (verticalPadding * 2) - (stackSpacing * 2) - headerHeight,
                 300
@@ -56,7 +56,8 @@ struct ContentView: View {
             VStack(spacing: stackSpacing) {
                 header
                 topChart
-                    .frame(width: availablePanelWidth, height: topRowHeight)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(height: topRowHeight)
                 HStack(spacing: horizontalGap) {
                     csvLikeEntryGrid(availableWidth: tablePanelWidth)
                         .frame(width: tablePanelWidth, alignment: .leading)
@@ -64,6 +65,7 @@ struct ContentView: View {
                     groupedChartsPanel
                         .frame(width: miniPanelWidth, height: bottomRowHeight)
                 }
+                .frame(width: availablePanelWidth, alignment: .leading)
             }
             .padding(.leading, horizontalPaddingLeading)
             .padding(.trailing, horizontalPaddingTrailing)
@@ -139,15 +141,16 @@ struct ContentView: View {
             }
             .padding(14)
             .background(Color.white)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(navy.opacity(0.15), lineWidth: 1))
             .overlay(alignment: .topTrailing) {
                 YearProgressDonut(
                     progress: yearProgress,
                     tintColor: lime
                 )
-                .padding(.top, 18)
-                .padding(.trailing, 22)
+                .padding(.top, 10)
+                .padding(.trailing, 10)
+                .allowsHitTesting(false)
             }
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(navy.opacity(0.15), lineWidth: 1))
         }
         .padding(8)
         .background(RoundedRectangle(cornerRadius: 10).fill(sheetBg))
@@ -246,7 +249,7 @@ struct ContentView: View {
         let minimumMetricWidth: CGFloat = 30
         let targetWidth = max(availableWidth, 700)
         let adaptiveMetricWidth = floor((targetWidth - dateColumnWidth - overallWidth) / CGFloat(tableMetrics.count))
-        let metricCellWidth = max(minimumMetricWidth, floor(adaptiveMetricWidth * 0.75))
+        let metricCellWidth = max(minimumMetricWidth, adaptiveMetricWidth)
         let tableWidth = dateColumnWidth + (CGFloat(tableMetrics.count) * metricCellWidth) + overallWidth
 
         return VStack(alignment: .leading, spacing: 8) {
