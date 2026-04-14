@@ -24,7 +24,7 @@ struct ContentView: View {
         ("Social", [.socialQuantity, .socialQuality]),
         ("Subjective", [.subjectiveRating])
     ]
-    @State private var expandedGroups: Set<String> = ["Subjective"]
+    @State private var expandedGroups: Set<String> = []
 
     private let navy = Color(red: 0.13, green: 0.23, blue: 0.36)
     private let lime = Color(red: 0.78, green: 0.84, blue: 0.29)
@@ -36,29 +36,38 @@ struct ContentView: View {
             let horizontalPaddingLeading: CGFloat = 18
             let horizontalPaddingTrailing: CGFloat = 24
             let horizontalGap: CGFloat = 14
+            let verticalPadding: CGFloat = 18
+            let stackSpacing: CGFloat = 14
+            let headerHeight: CGFloat = 34
             let availablePanelWidth = max(
                 proxy.size.width - horizontalPaddingLeading - horizontalPaddingTrailing,
                 700
             )
-            let topContentWidth = max(availablePanelWidth - horizontalGap, 300)
-            let overviewWidth = topContentWidth * (2.0 / 3.0)
-            let miniPanelWidth = topContentWidth * (1.0 / 3.0)
+            let bottomContentWidth = max(availablePanelWidth - horizontalGap, 300)
+            let miniPanelWidth = bottomContentWidth * (1.0 / 3.0)
+            let tablePanelWidth = max(bottomContentWidth - miniPanelWidth, 300)
+            let availableContentHeight = max(
+                proxy.size.height - (verticalPadding * 2) - (stackSpacing * 2) - headerHeight,
+                300
+            )
+            let topRowHeight = availableContentHeight * (2.0 / 3.0)
+            let bottomRowHeight = max(availableContentHeight - topRowHeight, 120)
 
-            VStack(spacing: 14) {
+            VStack(spacing: stackSpacing) {
                 header
+                topChart
+                    .frame(width: availablePanelWidth, height: topRowHeight)
                 HStack(spacing: horizontalGap) {
-                    topChart
-                        .frame(width: overviewWidth, height: proxy.size.height * 0.56)
+                    csvLikeEntryGrid(availableWidth: tablePanelWidth)
+                        .frame(width: tablePanelWidth, alignment: .leading)
+                        .frame(height: bottomRowHeight)
                     groupedChartsPanel
-                        .frame(width: miniPanelWidth, height: proxy.size.height * 0.56)
+                        .frame(width: miniPanelWidth, height: bottomRowHeight)
                 }
-                csvLikeEntryGrid(availableWidth: availablePanelWidth)
-                    .frame(width: availablePanelWidth, alignment: .leading)
-                    .frame(height: proxy.size.height * 0.38)
             }
             .padding(.leading, horizontalPaddingLeading)
             .padding(.trailing, horizontalPaddingTrailing)
-            .padding(.vertical, 18)
+            .padding(.vertical, verticalPadding)
             .dynamicTypeSize(.xLarge)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(sheetBg)
@@ -87,23 +96,29 @@ struct ContentView: View {
     private var topChart: some View {
         VStack(alignment: .leading, spacing: 8) {
             sectionHeader("Overview Year")
-            Chart(store.scoredEntries) { point in
-                BarMark(
-                    x: .value("Date", point.date),
-                    y: .value("Overall", point.overallScore),
-                    width: .fixed(2.8)
-                )
+            Chart {
+                ForEach(store.scoredEntries) { point in
+                    BarMark(
+                        x: .value("Date", point.date),
+                        y: .value("Overall", point.overallScore),
+                        width: .fixed(2.8)
+                    )
                     .foregroundStyle(barBlue)
-                LineMark(x: .value("Date", point.date), y: .value("Trend", point.trendValue))
-                    .lineStyle(StrokeStyle(lineWidth: 3.1))
-                    .foregroundStyle(Color.orange)
-                    .zIndex(1)
+                    .zIndex(0)
+                }
+                ForEach(store.scoredEntries) { point in
+                    LineMark(x: .value("Date", point.date), y: .value("Trend", point.trendValue))
+                        .lineStyle(StrokeStyle(lineWidth: 3.1))
+                        .foregroundStyle(Color.orange)
+                        .zIndex(2)
+                }
             }
             .chartYScale(domain: 1...10)
             .chartXScale(domain: yearDomain)
             .chartYAxis {
                 AxisMarks(position: .leading, values: Array(1...10)) { value in
-                    AxisGridLine()
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.8))
+                        .foregroundStyle(Color.gray.opacity(0.35))
                     AxisTick()
                     AxisValueLabel()
                         .foregroundStyle(navy)
@@ -129,7 +144,8 @@ struct ContentView: View {
                     progress: yearProgress,
                     tintColor: lime
                 )
-                .padding(10)
+                .padding(.top, 18)
+                .padding(.trailing, 22)
             }
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(navy.opacity(0.15), lineWidth: 1))
         }
@@ -186,10 +202,11 @@ struct ContentView: View {
                                         .chartXScale(domain: yearDomain)
                                         .chartYAxis {
                                             AxisMarks(position: .leading, values: Array(1...10)) { value in
-                                                AxisGridLine()
+                                                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.7))
+                                                    .foregroundStyle(Color.gray.opacity(0.33))
                                                 AxisTick()
                                                 AxisValueLabel()
-                                                    .font(.system(size: 9))
+                                                    .font(.system(size: 7.5))
                                                     .foregroundStyle(navy)
                                             }
                                         }
@@ -197,7 +214,7 @@ struct ContentView: View {
                                             AxisMarks(values: monthTickDates) { value in
                                                 AxisTick()
                                                 AxisValueLabel(format: .dateTime.month(.abbreviated))
-                                                    .font(.caption2)
+                                                    .font(.system(size: 8))
                                                     .foregroundStyle(navy)
                                             }
                                         }
@@ -224,12 +241,12 @@ struct ContentView: View {
         }
         let dates = allDatesAscending()
         let dateColumnWidth: CGFloat = 106
-        let overallWidth: CGFloat = 52
+        let overallWidth: CGFloat = 39
         let cellHeight: CGFloat = 38
-        let minimumMetricWidth: CGFloat = 40
+        let minimumMetricWidth: CGFloat = 30
         let targetWidth = max(availableWidth, 700)
         let adaptiveMetricWidth = floor((targetWidth - dateColumnWidth - overallWidth) / CGFloat(tableMetrics.count))
-        let metricCellWidth = max(minimumMetricWidth, adaptiveMetricWidth)
+        let metricCellWidth = max(minimumMetricWidth, floor(adaptiveMetricWidth * 0.75))
         let tableWidth = dateColumnWidth + (CGFloat(tableMetrics.count) * metricCellWidth) + overallWidth
 
         return VStack(alignment: .leading, spacing: 8) {
@@ -360,8 +377,7 @@ struct ContentView: View {
             }
 
             Text(String(format: "%.2f", ScoringEngine.overallScore(for: entry)))
-                .font(.callout.monospacedDigit())
-                .fontWeight(.bold)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .foregroundStyle(Color(red: 0.2, green: 0.2, blue: 0.22))
                 .frame(width: overallWidth, height: cellHeight)
                 .background(rowMissing ? Color.blue.opacity(0.08) : Color.white)
@@ -484,7 +500,7 @@ private struct NumericMetricCell: View {
         ZStack {
             heatColor(for: value)
             TextField("", text: $text)
-                .font(.callout.monospacedDigit())
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Color(red: 0.15, green: 0.15, blue: 0.15))
                 .textFieldStyle(.plain)
@@ -560,7 +576,7 @@ private struct YearProgressDonut: View {
                 .stroke(tintColor, style: StrokeStyle(lineWidth: 11, lineCap: .round))
                 .rotationEffect(.degrees(-90))
             Text("\(Int((progress * 100).rounded()))%")
-                .font(.title3.weight(.bold))
+                .font(.title2.weight(.heavy))
                 .foregroundStyle(Color(red: 0.25, green: 0.25, blue: 0.28))
         }
         .frame(width: 78, height: 78)

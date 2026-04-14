@@ -66,4 +66,3 @@ cat > "$PLIST_PATH" <<'EOF'
 EOF
 
 echo "Built app bundle at: $APP_DIR"
-echo "If Finder still shows an old icon: touch \"$APP_DIR\" && killall Finder"
