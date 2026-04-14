@@ -12,9 +12,9 @@ struct ContentView: View {
     @State private var didScrollTableToBottom = false
 
     private let tableMetrics: [TrackerMetric] = [
-        .subjectiveRating, .generalMood, .energy, .stress, .confidence, .bodyImage, .phdEnthusiasm,
-        .work, .chores, .relaxation, .exercise, .walkingCycling, .generalHealth, .sleep, .nutrition,
-        .hydration, .alcoholDrugs, .socialQuantity, .socialQuality
+        .generalMood, .energy, .stress, .confidence, .bodyImage, .phdEnthusiasm, .work, .chores,
+        .relaxation, .exercise, .walkingCycling, .generalHealth, .sleep, .nutrition, .hydration,
+        .alcoholDrugs, .socialQuantity, .socialQuality, .subjectiveRating
     ]
     private let groupSpecs: [(title: String, metrics: [TrackerMetric])] = [
         ("Emotional & Motivational State", [.generalMood, .energy, .stress, .confidence, .bodyImage, .phdEnthusiasm]),
@@ -24,7 +24,7 @@ struct ContentView: View {
         ("Social", [.socialQuantity, .socialQuality]),
         ("Subjective", [.subjectiveRating])
     ]
-    @State private var expandedGroups: Set<String> = ["Emotional & Motivational State", "Productivity"]
+    @State private var expandedGroups: Set<String> = ["Subjective"]
 
     private let navy = Color(red: 0.13, green: 0.23, blue: 0.36)
     private let lime = Color(red: 0.78, green: 0.84, blue: 0.29)
@@ -71,10 +71,10 @@ struct ContentView: View {
     private var header: some View {
         HStack(spacing: 10) {
             ZStack {
-                Circle().fill(LinearGradient(colors: [Color.blue, Color.cyan], startPoint: .topLeading, endPoint: .bottomTrailing))
+                Circle().fill(navy)
                 Image(systemName: "waveform.path.ecg")
                     .font(.headline.weight(.bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(lime)
             }
             .frame(width: 34, height: 34)
             Text("Arne Daily Tracker")
@@ -107,7 +107,7 @@ struct ContentView: View {
                     AxisTick()
                     AxisValueLabel()
                         .foregroundStyle(navy)
-                        .font(.caption)
+                        .font(.system(size: 15, weight: .bold))
                 }
             }
             .chartXAxis {
@@ -116,15 +116,18 @@ struct ContentView: View {
                     AxisTick()
                     AxisValueLabel(format: .dateTime.month(.abbreviated))
                         .foregroundStyle(navy)
-                        .font(.caption)
+                        .font(.system(size: 15, weight: .bold))
                 }
+            }
+            .chartPlotStyle { plotArea in
+                plotArea.clipped()
             }
             .padding(14)
             .background(Color.white)
-            .overlay(alignment: .topLeading) {
+            .overlay(alignment: .topTrailing) {
                 YearProgressDonut(
                     progress: yearProgress,
-                    tintColor: navy
+                    tintColor: lime
                 )
                 .padding(10)
             }
@@ -175,7 +178,7 @@ struct ContentView: View {
                                             BarMark(
                                                 x: .value("Date", point.date),
                                                 y: .value(metric.rawValue, valueForMetric(metric, on: point.id)),
-                                                width: .fixed(2.4)
+                                                width: .fixed(3.2)
                                             )
                                             .foregroundStyle(barBlue)
                                         }
@@ -186,7 +189,7 @@ struct ContentView: View {
                                                 AxisGridLine()
                                                 AxisTick()
                                                 AxisValueLabel()
-                                                    .font(.caption2)
+                                                    .font(.system(size: 9))
                                                     .foregroundStyle(navy)
                                             }
                                         }
@@ -198,7 +201,7 @@ struct ContentView: View {
                                                     .foregroundStyle(navy)
                                             }
                                         }
-                                        .frame(height: 70)
+                                        .frame(height: 74)
                                         .padding(.horizontal, 6)
                                         .background(Color.white)
                                         .overlay(Rectangle().stroke(navy.opacity(0.15), lineWidth: 1))
@@ -216,12 +219,14 @@ struct ContentView: View {
 
     private func csvLikeEntryGrid(availableWidth: CGFloat) -> some View {
         let missing = Set(store.missingDates.map { Calendar.current.startOfDay(for: $0) })
-        let entriesByDate = Dictionary(uniqueKeysWithValues: store.entries.map { (Calendar.current.startOfDay(for: $0.date), $0) })
+        let entriesByDate = store.entries.reduce(into: [Date: DailyEntry]()) { result, entry in
+            result[Calendar.current.startOfDay(for: entry.date)] = entry
+        }
         let dates = allDatesAscending()
         let dateColumnWidth: CGFloat = 106
-        let overallWidth: CGFloat = 56
+        let overallWidth: CGFloat = 52
         let cellHeight: CGFloat = 38
-        let minimumMetricWidth: CGFloat = 44
+        let minimumMetricWidth: CGFloat = 40
         let targetWidth = max(availableWidth, 700)
         let adaptiveMetricWidth = floor((targetWidth - dateColumnWidth - overallWidth) / CGFloat(tableMetrics.count))
         let metricCellWidth = max(minimumMetricWidth, adaptiveMetricWidth)
@@ -302,7 +307,7 @@ struct ContentView: View {
 
     private func tableHeaderCell(_ title: String, width: CGFloat) -> some View {
         Text(title)
-            .font(.caption.weight(.bold))
+            .font(.callout.weight(.bold))
             .lineLimit(1)
             .truncationMode(.tail)
             .frame(width: width, height: 30)
@@ -334,7 +339,7 @@ struct ContentView: View {
     ) -> some View {
         HStack(spacing: 0) {
             Text(shortDate(date))
-                .font(.footnote.monospacedDigit())
+                .font(.callout.monospacedDigit().weight(.bold))
                 .foregroundStyle(Color(red: 0.2, green: 0.2, blue: 0.22))
                 .frame(width: dateColumnWidth, height: cellHeight)
                 .background(rowMissing ? Color.blue.opacity(0.08) : Color.white)
@@ -355,7 +360,7 @@ struct ContentView: View {
             }
 
             Text(String(format: "%.2f", ScoringEngine.overallScore(for: entry)))
-                .font(.footnote.monospacedDigit())
+                .font(.callout.monospacedDigit())
                 .fontWeight(.bold)
                 .foregroundStyle(Color(red: 0.2, green: 0.2, blue: 0.22))
                 .frame(width: overallWidth, height: cellHeight)
@@ -479,7 +484,7 @@ private struct NumericMetricCell: View {
         ZStack {
             heatColor(for: value)
             TextField("", text: $text)
-                .font(.footnote.monospacedDigit())
+                .font(.callout.monospacedDigit())
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Color(red: 0.15, green: 0.15, blue: 0.15))
                 .textFieldStyle(.plain)
@@ -490,8 +495,8 @@ private struct NumericMetricCell: View {
         .onTapGesture {
             onFocus()
         }
-        .onAppear { text = String(format: "%.1f", value) }
-        .onChange(of: value) { _, newValue in text = String(format: "%.1f", newValue) }
+        .onAppear { text = String(format: "%.0f", value.rounded()) }
+        .onChange(of: value) { _, newValue in text = String(format: "%.0f", newValue.rounded()) }
         .onSubmit {
             commitValue()
             onNavigate(.right)
@@ -523,11 +528,11 @@ private struct NumericMetricCell: View {
 
     private func commitValue() {
         guard let parsed = Double(text.replacingOccurrences(of: ",", with: ".")) else {
-            text = String(format: "%.1f", value)
+            text = String(format: "%.0f", value.rounded())
             return
         }
-        let clamped = min(max(parsed, 1), 10)
-        text = String(format: "%.1f", clamped)
+        let clamped = min(max(parsed, 1), 10).rounded()
+        text = String(format: "%.0f", clamped)
         onCommit(clamped)
     }
 
@@ -549,16 +554,16 @@ private struct YearProgressDonut: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(tintColor.opacity(0.18), lineWidth: 8)
+                .stroke(tintColor.opacity(0.18), lineWidth: 11)
             Circle()
                 .trim(from: 0, to: progress)
-                .stroke(tintColor, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                .stroke(tintColor, style: StrokeStyle(lineWidth: 11, lineCap: .round))
                 .rotationEffect(.degrees(-90))
             Text("\(Int((progress * 100).rounded()))%")
-                .font(.caption.weight(.bold))
+                .font(.title3.weight(.bold))
                 .foregroundStyle(Color(red: 0.25, green: 0.25, blue: 0.28))
         }
-        .frame(width: 62, height: 62)
+        .frame(width: 78, height: 78)
         .padding(4)
         .background(Color.white.opacity(0.95))
         .clipShape(RoundedRectangle(cornerRadius: 8))

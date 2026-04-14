@@ -88,7 +88,7 @@ final class TrackerStore: ObservableObject {
         let header = splitCSVLine(lines[0])
         let indexByColumn = Dictionary(uniqueKeysWithValues: header.enumerated().map { ($1, $0) })
 
-        var loaded: [DailyEntry] = []
+        var loadedByDay: [Date: DailyEntry] = [:]
         for line in lines.dropFirst() {
             let f = splitCSVLine(line)
             guard let dateText = value("date", from: f, indexByColumn: indexByColumn),
@@ -113,9 +113,10 @@ final class TrackerStore: ObservableObject {
             e.alcoholDrugs = d(value("alcoholDrugs", from: f, indexByColumn: indexByColumn))
             e.socialQuantity = d(value("socialQuantity", from: f, indexByColumn: indexByColumn))
             e.socialQuality = d(value("socialQuality", from: f, indexByColumn: indexByColumn))
-            loaded.append(e)
+            let day = Calendar.current.startOfDay(for: e.date)
+            loadedByDay[day] = e
         }
-        entries = loaded.sorted { $0.date < $1.date }
+        entries = loadedByDay.values.sorted { $0.date < $1.date }
     }
 
     private func persist() {

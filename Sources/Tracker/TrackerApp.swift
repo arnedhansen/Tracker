@@ -3,7 +3,7 @@ import AppKit
 
 @main
 struct TrackerApp: App {
-    @StateObject private var store = TrackerStore(baseDirectory: "/Users/Arne/Tracker")
+    @StateObject private var store = TrackerStore(baseDirectory: "/Users/Arne/Documents/GitHub/Tracker")
     @State private var hasAdjustedInitialWindowState = false
     private var initialWindowSize: CGSize {
         NSScreen.main?.visibleFrame.size ?? CGSize(width: 1512, height: 982)
