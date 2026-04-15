@@ -226,7 +226,7 @@ struct ContentView: View {
         let summary = topBarSummary
         return HStack(spacing: 10) {
             Text(
-                "Current avg \(summary.currentAvg) | Best day \(summary.bestDay) | Worst day \(summary.worstDay) | 7d avg \(summary.rolling7) | 30d avg \(summary.rolling30) | Trend \(summary.trendDirection) | Vol \(summary.volatility)"
+                "Current Average \(summary.currentAvg) | Best Day \(summary.bestDay) | Worst Day \(summary.worstDay) | 7-Day Average \(summary.rolling7) | 30-Day Average \(summary.rolling30) | Trend Direction \(summary.trendDirection) | Volatility \(summary.volatility)"
             )
             .font(.system(size: 11, weight: .bold, design: .monospaced))
             .foregroundStyle(navy)
@@ -1013,7 +1013,7 @@ struct ContentView: View {
     private func shortBadgeDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "ddMMM"
+        formatter.dateFormat = "EEEE dd MMMM"
         return formatter.string(from: date)
     }
 }
