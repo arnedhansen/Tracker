@@ -34,7 +34,7 @@ struct ContentView: View {
     private let lime = Color(red: 0.78, green: 0.84, blue: 0.29)
     private let barBlue = Color(red: 0.29, green: 0.46, blue: 0.76)
     private let sheetBg = Color(red: 0.94, green: 0.95, blue: 0.97)
-    private let overallPastelOrange = Color(red: 0.98, green: 0.76, blue: 0.56).opacity(0.40)
+    private let overallPastelOrange = Color(red: 1.00, green: 0.82, blue: 0.58).opacity(0.62)
     private let yGridStroke = StrokeStyle(lineWidth: 0.45, dash: [6, 4])
 
     var body: some View {
@@ -139,11 +139,13 @@ struct ContentView: View {
                         .foregroundStyle(navy)
                         .font(.system(size: 14, weight: .bold))
                 }
-                AxisMarks(preset: .inset, values: everyFifthDayTickDates) { _ in
-                    AxisTick()
+                // Keep day labels below the axis so they do not overlap chart data.
+                AxisMarks(values: everyFifthDayTickDates) { _ in
+                    AxisTick(length: 3)
                     AxisValueLabel(format: .dateTime.day())
                         .foregroundStyle(navy)
                         .font(.system(size: 9, weight: .bold))
+                        .offset(y: 9)
                 }
             }
             .chartPlotStyle { plotArea in
