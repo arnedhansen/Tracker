@@ -11,11 +11,12 @@ final class TrackerStore: ObservableObject {
 
     init(baseDirectory: String) {
         self.baseDirectory = baseDirectory
-        self.selectedDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+        self.selectedDate = Date()
         self.csvPath = "\(baseDirectory)/tracker_data.csv"
         self.dateFormatter = DateFormatter()
+        self.dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         self.dateFormatter.dateFormat = "yyyy-MM-dd"
-        self.dateFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+        self.dateFormatter.timeZone = .current
         load()
     }
 

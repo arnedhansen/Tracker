@@ -9,6 +9,9 @@ private struct CellID: Hashable {
 struct ContentView: View {
     @EnvironmentObject private var store: TrackerStore
     @FocusState private var focusedCell: CellID?
+    @State private var hoveredOverviewDay: Date?
+    @State private var hoveredOverviewTooltipOnRight = true
+    @State private var hoveredOverviewClearToken = UUID()
     @State private var didScrollTableToBottom = false
     @State private var rowFramesByIndex: [Int: CGRect] = [:]
     @State private var tableViewportFrame: CGRect = .zero
@@ -21,12 +24,12 @@ struct ContentView: View {
         .alcoholDrugs, .socialQuantity, .socialQuality, .subjectiveRating
     ]
     private let groupSpecs: [(title: String, metrics: [TrackerMetric])] = [
+        ("Productivity / Output", [.work, .chores]),
+        ("Recovery & Movement", [.relaxation, .exercise, .walkingCycling]),
+        ("Subjective Day Rating", [.subjectiveRating]),
         ("Emotional & Motivational State", [.generalMood, .energy, .stress, .confidence, .bodyImage, .phdEnthusiasm]),
-        ("Productivity", [.work, .chores]),
-        ("Relaxation", [.relaxation, .exercise, .walkingCycling]),
         ("Physical Health", [.generalHealth, .sleep, .nutrition, .hydration, .alcoholDrugs]),
-        ("Social", [.socialQuantity, .socialQuality]),
-        ("Subjective", [.subjectiveRating])
+        ("Social", [.socialQuantity, .socialQuality])
     ]
     @State private var expandedGroups: Set<String> = []
 
@@ -36,6 +39,9 @@ struct ContentView: View {
     private let sheetBg = Color(red: 0.94, green: 0.95, blue: 0.97)
     private let overallPastelOrange = Color(red: 1.00, green: 0.82, blue: 0.58).opacity(0.62)
     private let yGridStroke = StrokeStyle(lineWidth: 0.45, dash: [6, 4])
+    private let overviewBarWidth: CGFloat = 3.6
+    private let overviewTooltipWidth: CGFloat = 190
+    private let overviewHoverClearDelay: TimeInterval = 0.14
 
     var body: some View {
         GeometryReader { proxy in
@@ -102,17 +108,37 @@ struct ContentView: View {
     }
 
     private var topChart: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let hoveredEntry = hoveredOverviewDay.flatMap { entryByDay[$0] }
+        let hoveredOverall = hoveredOverviewDay.flatMap { overallByDay[$0] }
+        return VStack(alignment: .leading, spacing: 8) {
             sectionHeader("Overview Year")
+            comparisonBadge
             Chart {
                 ForEach(store.scoredEntries) { point in
                     BarMark(
                         x: .value("Date", point.date),
-                        y: .value("Overall", point.overallScore),
-                        width: .fixed(3.6)
+                        yStart: .value("Baseline", 1),
+                        yEnd: .value("Overall", point.overallScore),
+                        width: .fixed(overviewBarWidth)
                     )
                     .foregroundStyle(barBlue)
                     .zIndex(0)
+                }
+                if let hoveredDay = hoveredOverviewDay,
+                   let entry = hoveredEntry,
+                   let overall = hoveredOverall {
+                    RuleMark(x: .value("Hovered Day", hoveredDay))
+                        .lineStyle(StrokeStyle(lineWidth: 1.0, dash: [4, 3]))
+                        .foregroundStyle(navy.opacity(0.65))
+                        .zIndex(3)
+                        .annotation(
+                            position: .top,
+                            alignment: hoveredOverviewTooltipOnRight ? .leading : .trailing,
+                            spacing: 10,
+                            overflowResolution: .init(x: .fit, y: .fit)
+                        ) {
+                            overviewHoverTooltip(day: hoveredDay, entry: entry, overall: overall)
+                        }
                 }
                 ForEach(store.scoredEntries) { point in
                     LineMark(x: .value("Date", point.date), y: .value("Trend", point.trendValue))
@@ -122,7 +148,7 @@ struct ContentView: View {
                 }
             }
             .chartYScale(domain: 1...10)
-            .chartXScale(domain: yearDomain)
+            .chartXScale(domain: fullYearDomainPadded)
             .chartYAxis {
                 AxisMarks(position: .leading, values: Array(1...10)) { value in
                     AxisGridLine(stroke: yGridStroke)
@@ -135,7 +161,7 @@ struct ContentView: View {
             }
             .chartXAxis {
                 AxisMarks(values: monthMidTickDates) { value in
-                    AxisValueLabel(centered: true) {
+                    AxisValueLabel {
                         if let date = value.as(Date.self) {
                             Text(date.formatted(.dateTime.month(.abbreviated)))
                                 .frame(minWidth: 28, alignment: .center)
@@ -143,7 +169,7 @@ struct ContentView: View {
                     }
                     .foregroundStyle(navy)
                     .font(.system(size: 13, weight: .bold))
-                    .offset(y: 12)
+                    .offset(x: -11, y: 12)
                 }
                 AxisMarks(values: dayTickDatesForExistingData) { value in
                     AxisTick(length: 3)
@@ -160,6 +186,25 @@ struct ContentView: View {
             .chartPlotStyle { plotArea in
                 plotArea.clipped()
             }
+            .chartOverlay { chartProxy in
+                GeometryReader { geometry in
+                    Rectangle()
+                        .fill(.clear)
+                        .contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let location):
+                                updateHoveredOverviewDay(
+                                    for: location,
+                                    chartProxy: chartProxy,
+                                    geometry: geometry
+                                )
+                            case .ended:
+                                scheduleOverviewHoverClear()
+                            }
+                        }
+                }
+            }
             .padding(14)
             .background(Color.white)
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(navy.opacity(0.15), lineWidth: 1))
@@ -175,6 +220,19 @@ struct ContentView: View {
         }
         .padding(8)
         .background(RoundedRectangle(cornerRadius: 10).fill(sheetBg))
+    }
+
+    private var comparisonBadge: some View {
+        let summary = topBarSummary
+        return HStack(spacing: 10) {
+            Text(
+                "Current avg \(summary.currentAvg) | Best day \(summary.bestDay) | Worst day \(summary.worstDay) | 7d avg \(summary.rolling7) | 30d avg \(summary.rolling30) | Trend \(summary.trendDirection) | Vol \(summary.volatility)"
+            )
+            .font(.system(size: 11, weight: .bold, design: .monospaced))
+            .foregroundStyle(navy)
+            Spacer()
+        }
+        .padding(.horizontal, 4)
     }
 
     private var groupedChartsPanel: some View {
@@ -226,7 +284,7 @@ struct ContentView: View {
                                             .foregroundStyle(barBlue)
                                         }
                                         .chartYScale(domain: 0.8...10.4)
-                                        .chartXScale(domain: yearDomain)
+                                        .chartXScale(domain: fullYearDomainPadded)
                                         .chartYAxis {
                                             AxisMarks(position: .leading, values: Array(1...10)) { _ in
                                                 AxisGridLine(stroke: yGridStroke)
@@ -518,8 +576,214 @@ struct ContentView: View {
     }
 
     private func valueForMetric(_ metric: TrackerMetric, on date: Date) -> Double {
-        guard let entry = store.entries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: date) }) else { return 0 }
+        let normalized = Calendar.current.startOfDay(for: date)
+        guard let entry = entryByDay[normalized] else { return 0 }
         return entry.value(for: metric)
+    }
+
+    private var entryByDay: [Date: DailyEntry] {
+        Dictionary(uniqueKeysWithValues: store.entries.map { entry in
+            (Calendar.current.startOfDay(for: entry.date), entry)
+        })
+    }
+
+    private var overallByDay: [Date: Double] {
+        Dictionary(uniqueKeysWithValues: store.scoredEntries.map { scored in
+            (Calendar.current.startOfDay(for: scored.date), scored.overallScore)
+        })
+    }
+
+    private var scoredDatesSorted: [Date] {
+        store.scoredEntries
+            .map { Calendar.current.startOfDay(for: $0.date) }
+            .sorted()
+    }
+
+    private func updateHoveredOverviewDay(
+        for location: CGPoint,
+        chartProxy: ChartProxy,
+        geometry: GeometryProxy
+    ) {
+        guard let plotFrame = chartProxy.plotFrame else {
+            scheduleOverviewHoverClear()
+            return
+        }
+        let plotRect = geometry[plotFrame]
+        guard plotRect.contains(location) else {
+            scheduleOverviewHoverClear()
+            return
+        }
+
+        let xPosition = location.x - plotRect.origin.x
+        guard let hoveredDate: Date = chartProxy.value(atX: xPosition) else {
+            scheduleOverviewHoverClear()
+            return
+        }
+
+        let yPosition = location.y - plotRect.origin.y
+        let day = hoveredDayIfInsideBar(
+            rawDate: hoveredDate,
+            plotX: xPosition,
+            plotY: yPosition,
+            chartProxy: chartProxy
+        )
+        if let day {
+            cancelOverviewHoverClear()
+            hoveredOverviewDay = day
+        } else {
+            scheduleOverviewHoverClear()
+        }
+    }
+
+    private func cancelOverviewHoverClear() {
+        hoveredOverviewClearToken = UUID()
+    }
+
+    private func scheduleOverviewHoverClear() {
+        let token = UUID()
+        hoveredOverviewClearToken = token
+        DispatchQueue.main.asyncAfter(deadline: .now() + overviewHoverClearDelay) {
+            guard hoveredOverviewClearToken == token else { return }
+            hoveredOverviewDay = nil
+        }
+    }
+
+    private func hoveredDayIfInsideBar(
+        rawDate: Date,
+        plotX: CGFloat,
+        plotY: CGFloat,
+        chartProxy: ChartProxy
+    ) -> Date? {
+        let normalized = Calendar.current.startOfDay(for: rawDate)
+        guard !scoredDatesSorted.isEmpty else { return nil }
+        guard let closestDay = scoredDatesSorted.min(by: {
+            abs($0.timeIntervalSince(normalized)) < abs($1.timeIntervalSince(normalized))
+        }) else { return nil }
+        guard let overall = overallByDay[closestDay] else { return nil }
+        guard let dayX = chartProxy.position(forX: closestDay) else { return nil }
+
+        let xTolerance = (overviewBarWidth / 2.0) + 1.0
+        guard abs(dayX - plotX) <= xTolerance else { return nil }
+
+        guard let barTop = chartProxy.position(forY: overall),
+              let barBase = chartProxy.position(forY: 1.0) else { return nil }
+        let minY = min(barTop, barBase)
+        let maxY = max(barTop, barBase)
+        guard plotY >= minY && plotY <= maxY else { return nil }
+
+        let sidePadding: CGFloat = 10
+        let requiredSpace = overviewTooltipWidth + sidePadding
+        let leftSpace = dayX
+        let rightSpace = chartProxy.plotSize.width - dayX
+        if rightSpace >= requiredSpace && leftSpace >= requiredSpace {
+            hoveredOverviewTooltipOnRight = rightSpace >= leftSpace
+        } else if rightSpace >= requiredSpace {
+            hoveredOverviewTooltipOnRight = true
+        } else if leftSpace >= requiredSpace {
+            hoveredOverviewTooltipOnRight = false
+        } else {
+            hoveredOverviewTooltipOnRight = rightSpace >= leftSpace
+        }
+
+        return closestDay
+    }
+
+    private func overviewHoverTooltip(day: Date, entry: DailyEntry, overall: Double) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(tooltipDateLabel(for: day))
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(navy)
+            Text(String(format: "Overall: %.2f", overall))
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundStyle(navy)
+            Divider()
+            ForEach(tableMetrics, id: \.rawValue) { metric in
+                HStack(spacing: 8) {
+                    Text(shortLabel(metric.rawValue))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(navy.opacity(0.9))
+                    Spacer(minLength: 4)
+                    Text(String(format: "%.0f", entry.value(for: metric).rounded()))
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Color(red: 0.15, green: 0.15, blue: 0.15))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(tableHeatColor(for: entry.value(for: metric)))
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                }
+            }
+        }
+        .padding(8)
+        .frame(width: overviewTooltipWidth, alignment: .leading)
+        .background(Color.white.opacity(0.97))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(navy.opacity(0.2), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .allowsHitTesting(false)
+    }
+
+    private func tooltipDateLabel(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "EEE dd MMM yyyy"
+        return formatter.string(from: date)
+    }
+
+    private func tableHeatColor(for value: Double) -> Color {
+        let heatLowDark = Color(red: 0.87, green: 0.30, blue: 0.30)
+        let heatLowSoft = Color(red: 1.0, green: 0.58, blue: 0.58)
+        let heatMid = Color(red: 1.0, green: 1.0, blue: 1.0)
+        let heatHighSoft = Color(red: 0.72, green: 1.0, blue: 0.72)
+        let heatHighDark = Color(red: 0.34, green: 0.78, blue: 0.34)
+        let t = min(max((value - 1) / 9, 0), 1)
+        let lowExtremeEnd = 2.0 / 9.0
+        let highExtremeStart = 7.0 / 9.0
+
+        if t <= lowExtremeEnd {
+            let k = t / lowExtremeEnd
+            return blendedColor(from: heatLowDark, to: heatLowSoft, fraction: k).opacity(0.78)
+        }
+        if t < 0.5 {
+            let k = (t - lowExtremeEnd) / (0.5 - lowExtremeEnd)
+            return blendedColor(from: heatLowSoft, to: heatMid, fraction: k).opacity(0.74)
+        }
+        if t < highExtremeStart {
+            let k = (t - 0.5) / (highExtremeStart - 0.5)
+            return blendedColor(from: heatMid, to: heatHighSoft, fraction: k).opacity(0.74)
+        }
+
+        let k = (t - highExtremeStart) / (1.0 - highExtremeStart)
+        return blendedColor(from: heatHighSoft, to: heatHighDark, fraction: k).opacity(0.78)
+    }
+
+    private func blendedColor(from: Color, to: Color, fraction: Double) -> Color {
+        let f = min(max(fraction, 0), 1)
+        #if canImport(AppKit)
+        let fromNS = NSColor(from).usingColorSpace(.sRGB) ?? .black
+        let toNS = NSColor(to).usingColorSpace(.sRGB) ?? .black
+        #else
+        let fromNS = NSColor.black
+        let toNS = NSColor.black
+        #endif
+
+        var fromR: CGFloat = 0
+        var fromG: CGFloat = 0
+        var fromB: CGFloat = 0
+        var fromA: CGFloat = 0
+        var toR: CGFloat = 0
+        var toG: CGFloat = 0
+        var toB: CGFloat = 0
+        var toA: CGFloat = 0
+
+        fromNS.getRed(&fromR, green: &fromG, blue: &fromB, alpha: &fromA)
+        toNS.getRed(&toR, green: &toG, blue: &toB, alpha: &toA)
+
+        let red = fromR + (toR - fromR) * f
+        let green = fromG + (toG - fromG) * f
+        let blue = fromB + (toB - fromB) * f
+        let alpha = fromA + (toA - fromA) * f
+
+        return Color(.sRGB, red: red, green: green, blue: blue, opacity: alpha)
     }
 
     private func allDatesAscending() -> [Date] {
@@ -558,6 +822,15 @@ struct ContentView: View {
         return start...end
     }
 
+    private var fullYearDomainPadded: ClosedRange<Date> {
+        let calendar = Calendar.current
+        let yearStart = calendar.date(from: DateComponents(year: displayYear, month: 1, day: 1)) ?? Date()
+        let nextYearStart = calendar.date(from: DateComponents(year: displayYear + 1, month: 1, day: 1)) ?? yearStart
+        let paddedStart = yearStart.addingTimeInterval(-12 * 60 * 60)
+        let paddedEnd = nextYearStart.addingTimeInterval(12 * 60 * 60)
+        return paddedStart...paddedEnd
+    }
+
     private var monthTickDates: [Date] {
         let calendar = Calendar.current
         return (1...12).compactMap { month in
@@ -567,11 +840,12 @@ struct ContentView: View {
 
     private var monthMidTickDates: [Date] {
         let calendar = Calendar.current
-        return monthTickDates.compactMap { start in
+        return monthTickDates.compactMap { monthStart in
             return calendar.date(from: DateComponents(
-                year: calendar.component(.year, from: start),
-                month: calendar.component(.month, from: start),
-                day: 15
+                year: calendar.component(.year, from: monthStart),
+                month: calendar.component(.month, from: monthStart),
+                day: 15,
+                hour: 12
             ))
         }
     }
@@ -593,7 +867,7 @@ struct ContentView: View {
         let end = calendar.startOfDay(for: lastScoredDate)
         guard let firstMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: start)) else { return [] }
 
-        let standardDays = [5, 10, 15, 20, 25]
+        let standardDays = [5, 10, 15, 20, 25, 30]
         var specs: [(date: Date, label: String)] = []
         var monthStart = firstMonth
 
@@ -604,6 +878,9 @@ struct ContentView: View {
             for day in standardDays {
                 guard let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) else { continue }
                 let normalized = calendar.startOfDay(for: date)
+                // Guard against Calendar date rollover (e.g., Feb 30 -> Mar 2).
+                guard calendar.component(.year, from: normalized) == year,
+                      calendar.component(.month, from: normalized) == month else { continue }
                 if normalized >= start && normalized <= end {
                     specs.append((date: normalized, label: String(day)))
                 }
@@ -651,6 +928,114 @@ struct ContentView: View {
             .frame(height: 26)
             .background(navy)
     }
+
+    private var topBarSummary: TopBarSummary {
+        let scored = store.scoredEntries.sorted { $0.date < $1.date }
+        guard !scored.isEmpty else { return .empty }
+
+        let values = scored.map(\.overallScore)
+        let currentAvg = formatStat(mean(values))
+
+        let bestDayString: String = {
+            guard let best = scored.max(by: { $0.overallScore < $1.overallScore }) else { return "N/A" }
+            return "\(formatStat(best.overallScore)) \(shortBadgeDate(best.date))"
+        }()
+
+        let worstDayString: String = {
+            guard let worst = scored.min(by: { $0.overallScore < $1.overallScore }) else { return "N/A" }
+            return "\(formatStat(worst.overallScore)) \(shortBadgeDate(worst.date))"
+        }()
+
+        let rolling7 = formatStat(mean(Array(values.suffix(7))))
+        let rolling30 = formatStat(mean(Array(values.suffix(30))))
+
+        let trendValues = Array(values.suffix(14))
+        let slope = linearSlope(trendValues)
+        let trendDirection: String
+        switch slope {
+        case let s where s > 0.03:
+            trendDirection = "Up"
+        case let s where s < -0.03:
+            trendDirection = "Down"
+        default:
+            trendDirection = "Flat"
+        }
+
+        let volatility = formatStat(standardDeviation(Array(values.suffix(30))))
+
+        return TopBarSummary(
+            currentAvg: currentAvg,
+            bestDay: bestDayString,
+            worstDay: worstDayString,
+            rolling7: rolling7,
+            rolling30: rolling30,
+            trendDirection: trendDirection,
+            volatility: volatility
+        )
+    }
+
+    private func mean(_ values: [Double]) -> Double? {
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0, +) / Double(values.count)
+    }
+
+    private func standardDeviation(_ values: [Double]) -> Double? {
+        guard values.count >= 2, let avg = mean(values) else { return nil }
+        let variance = values.reduce(0) { partial, value in
+            let diff = value - avg
+            return partial + (diff * diff)
+        } / Double(values.count)
+        return sqrt(variance)
+    }
+
+    private func linearSlope(_ values: [Double]) -> Double {
+        guard values.count >= 2 else { return 0 }
+        let xValues = values.indices.map(Double.init)
+        let xMean = xValues.reduce(0, +) / Double(xValues.count)
+        let yMean = values.reduce(0, +) / Double(values.count)
+
+        var numerator = 0.0
+        var denominator = 0.0
+        for (x, y) in zip(xValues, values) {
+            let xDiff = x - xMean
+            numerator += xDiff * (y - yMean)
+            denominator += xDiff * xDiff
+        }
+        guard denominator > 0 else { return 0 }
+        return numerator / denominator
+    }
+
+    private func formatStat(_ value: Double?) -> String {
+        guard let value else { return "N/A" }
+        return String(format: "%.2f", value)
+    }
+
+    private func shortBadgeDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "ddMMM"
+        return formatter.string(from: date)
+    }
+}
+
+private struct TopBarSummary {
+    let currentAvg: String
+    let bestDay: String
+    let worstDay: String
+    let rolling7: String
+    let rolling30: String
+    let trendDirection: String
+    let volatility: String
+
+    static let empty = TopBarSummary(
+        currentAvg: "N/A",
+        bestDay: "N/A",
+        worstDay: "N/A",
+        rolling7: "N/A",
+        rolling30: "N/A",
+        trendDirection: "N/A",
+        volatility: "N/A"
+    )
 }
 
 private struct RowFramePreferenceKey: PreferenceKey {

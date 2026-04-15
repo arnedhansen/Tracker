@@ -103,6 +103,9 @@ struct ScoredEntry: Identifiable {
     let date: Date
     let overallScore: Double
     let trendValue: Double
+    let legacyOverallScore: Double
+    let legacyTrendValue: Double
+    let isLegacySubjectiveDerived: Bool
 }
 
 enum TrackerMetric: String, CaseIterable {
