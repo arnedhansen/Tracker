@@ -50,8 +50,8 @@ struct ContentView: View {
                 700
             )
             let bottomRowUsableWidth = max(availablePanelWidth - horizontalGap, 300)
-            let tablePanelWidth = bottomRowUsableWidth * 0.75
-            let miniPanelWidth = bottomRowUsableWidth * 0.25
+            let tablePanelWidth = bottomRowUsableWidth * 0.72
+            let miniPanelWidth = bottomRowUsableWidth * 0.28
             let availableContentHeight = max(
                 proxy.size.height - (verticalPadding * 2) - (stackSpacing * 2) - headerHeight,
                 300
@@ -134,18 +134,27 @@ struct ContentView: View {
                 }
             }
             .chartXAxis {
-                AxisMarks(preset: .aligned, values: monthMidTickDates) { _ in
-                    AxisValueLabel(format: .dateTime.month(.abbreviated))
-                        .foregroundStyle(navy)
-                        .font(.system(size: 14, weight: .bold))
+                AxisMarks(values: monthMidTickDates) { value in
+                    AxisValueLabel(centered: true) {
+                        if let date = value.as(Date.self) {
+                            Text(date.formatted(.dateTime.month(.abbreviated)))
+                                .frame(minWidth: 28, alignment: .center)
+                        }
+                    }
+                    .foregroundStyle(navy)
+                    .font(.system(size: 13, weight: .bold))
+                    .offset(y: 12)
                 }
-                // Keep day labels below the axis so they do not overlap chart data.
-                AxisMarks(values: everyFifthDayTickDates) { _ in
+                AxisMarks(values: dayTickDatesForExistingData) { value in
                     AxisTick(length: 3)
-                    AxisValueLabel(format: .dateTime.day())
+                    AxisValueLabel {
+                        if let date = value.as(Date.self) {
+                            Text(dayTickLabel(for: date))
+                        }
+                    }
                         .foregroundStyle(navy)
-                        .font(.system(size: 9, weight: .bold))
-                        .offset(y: 9)
+                        .font(.system(size: 8, weight: .bold))
+                        .offset(y: 2)
                 }
             }
             .chartPlotStyle { plotArea in
@@ -216,32 +225,31 @@ struct ContentView: View {
                                             )
                                             .foregroundStyle(barBlue)
                                         }
-                                        .chartYScale(domain: 1...10.6)
+                                        .chartYScale(domain: 0.8...10.4)
                                         .chartXScale(domain: yearDomain)
                                         .chartYAxis {
-                                            AxisMarks(position: .leading, values: [1, 5, 10]) { _ in
+                                            AxisMarks(position: .leading, values: Array(1...10)) { _ in
                                                 AxisGridLine(stroke: yGridStroke)
                                                     .foregroundStyle(Color.gray.opacity(0.20))
                                                 AxisTick()
                                                 AxisValueLabel()
-                                                    .font(.system(size: 5))
+                                                    .font(.system(size: 4, weight: .bold))
                                                     .foregroundStyle(navy)
                                             }
                                         }
                                         .chartXAxis {
-                                            AxisMarks(values: miniMonthTickDates) { _ in
-                                                AxisValueLabel(format: .dateTime.month(.abbreviated))
-                                                    .font(.system(size: 6))
+                                            AxisMarks(values: monthTickDates) { _ in
+                                                AxisTick(length: 2)
+                                                AxisValueLabel(format: .dateTime.month(.narrow))
+                                                    .font(.system(size: 6, weight: .bold))
                                                     .foregroundStyle(navy)
-                                            }
-                                            AxisMarks(values: everyFifthDayTickDates) { _ in
-                                                AxisTick()
+                                                    .offset(y: 2)
                                             }
                                         }
                                         .chartPlotStyle { plotArea in
                                             plotArea.clipped()
                                         }
-                                        .frame(height: 74)
+                                        .frame(height: 94)
                                         .padding(.horizontal, 6)
                                         .background(Color.white)
                                         .overlay(Rectangle().stroke(navy.opacity(0.15), lineWidth: 1))
@@ -560,38 +568,79 @@ struct ContentView: View {
     private var monthMidTickDates: [Date] {
         let calendar = Calendar.current
         return monthTickDates.compactMap { start in
-            guard let monthRange = calendar.range(of: .day, in: .month, for: start) else { return nil }
-            let midDay = max(1, monthRange.count / 2)
             return calendar.date(from: DateComponents(
                 year: calendar.component(.year, from: start),
                 month: calendar.component(.month, from: start),
-                day: midDay
+                day: 15
             ))
         }
     }
 
-    private var everyFifthDayTickDates: [Date] {
-        let calendar = Calendar.current
-        let start = yearDomain.lowerBound
-        let end = yearDomain.upperBound
-        var ticks: [Date] = []
-        var cursor = start
-        while cursor <= end {
-            let day = calendar.component(.day, from: cursor)
-            if day % 5 == 0 {
-                ticks.append(cursor)
-            }
-            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
-            cursor = next
-        }
-        return ticks
+    private var dayTickDatesForExistingData: [Date] {
+        dayTickSpecsForExistingData.map(\.date)
     }
 
-    private var miniMonthTickDates: [Date] {
+    private var dayTickLabelByDate: [Date: String] {
+        Dictionary(uniqueKeysWithValues: dayTickSpecsForExistingData.map { ($0.date, $0.label) })
+    }
+
+    private var dayTickSpecsForExistingData: [(date: Date, label: String)] {
         let calendar = Calendar.current
-        return [1, 4, 7, 10].compactMap { month in
-            calendar.date(from: DateComponents(year: displayYear, month: month, day: 15))
+        let scoredDates = store.scoredEntries.map(\.date).sorted()
+        guard let firstScoredDate = scoredDates.first, let lastScoredDate = scoredDates.last else { return [] }
+
+        let start = calendar.startOfDay(for: firstScoredDate)
+        let end = calendar.startOfDay(for: lastScoredDate)
+        guard let firstMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: start)) else { return [] }
+
+        let standardDays = [5, 10, 15, 20, 25]
+        var specs: [(date: Date, label: String)] = []
+        var monthStart = firstMonth
+
+        while monthStart <= end {
+            let year = calendar.component(.year, from: monthStart)
+            let month = calendar.component(.month, from: monthStart)
+
+            for day in standardDays {
+                guard let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) else { continue }
+                let normalized = calendar.startOfDay(for: date)
+                if normalized >= start && normalized <= end {
+                    specs.append((date: normalized, label: String(day)))
+                }
+            }
+
+            // February special case: place the month-end label between Feb 25 and Mar 5.
+            if month == 2,
+               let monthRange = calendar.range(of: .day, in: .month, for: monthStart),
+               let day25 = calendar.date(from: DateComponents(year: year, month: 2, day: 25)),
+               let nextMonthStart = calendar.date(byAdding: .month, value: 1, to: monthStart),
+               let day5NextMonth = calendar.date(from: DateComponents(
+                year: calendar.component(.year, from: nextMonthStart),
+                month: calendar.component(.month, from: nextMonthStart),
+                day: 5
+               )) {
+                let midpoint = day25.addingTimeInterval(day5NextMonth.timeIntervalSince(day25) / 2.0)
+                let normalizedMidpoint = calendar.startOfDay(for: midpoint)
+                if normalizedMidpoint >= start && normalizedMidpoint <= end {
+                    specs.append((date: normalizedMidpoint, label: String(monthRange.count)))
+                }
+            }
+
+            guard let nextMonth = calendar.date(byAdding: .month, value: 1, to: monthStart) else { break }
+            monthStart = nextMonth
         }
+
+        // Keep one label per date and preserve chronological ordering.
+        let deduped = Dictionary(specs.map { ($0.date, $0.label) }, uniquingKeysWith: { first, _ in first })
+        return deduped.keys.sorted().compactMap { date in
+            guard let label = deduped[date] else { return nil }
+            return (date: date, label: label)
+        }
+    }
+
+    private func dayTickLabel(for date: Date) -> String {
+        let normalized = Calendar.current.startOfDay(for: date)
+        return dayTickLabelByDate[normalized] ?? String(Calendar.current.component(.day, from: normalized))
     }
 
     private func sectionHeader(_ title: String) -> some View {
