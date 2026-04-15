@@ -124,6 +124,30 @@ struct ContentView: View {
                     .foregroundStyle(barBlue)
                     .zIndex(0)
                 }
+                ForEach(monthlyAverageLabelPoints, id: \.month) { monthPoint in
+                    PointMark(
+                        x: .value("Month Label Date", monthPoint.labelDate),
+                        y: .value("Month Label Baseline", monthPoint.labelY)
+                    )
+                    .foregroundStyle(.clear)
+                    .annotation(position: .top, spacing: 6) {
+                        Text(monthPoint.label)
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(lime)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule()
+                                    .fill(navy.opacity(0.92))
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(lime.opacity(0.75), lineWidth: 1)
+                            )
+                            .shadow(color: navy.opacity(0.35), radius: 1, x: 0, y: 1)
+                    }
+                    .zIndex(4)
+                }
                 if let hoveredDay = hoveredOverviewDay,
                    let entry = hoveredEntry,
                    let overall = hoveredOverall {
@@ -847,6 +871,34 @@ struct ContentView: View {
                 day: 15,
                 hour: 12
             ))
+        }
+    }
+
+    private var monthlyAverageLabelPoints: [(month: Int, labelDate: Date, labelY: Double, label: String)] {
+        let calendar = Calendar.current
+        let scoredInDisplayYear = store.scoredEntries.filter { scored in
+            calendar.component(.year, from: scored.date) == displayYear
+        }
+        let scoredByMonth = Dictionary(grouping: scoredInDisplayYear) { scored in
+            calendar.component(.month, from: scored.date)
+        }
+        let monthFormatter = DateFormatter()
+        monthFormatter.locale = Locale.current
+        monthFormatter.setLocalizedDateFormatFromTemplate("MMM")
+
+        return (1...12).compactMap { month in
+            guard let monthScores = scoredByMonth[month], !monthScores.isEmpty else { return nil }
+            let average = monthScores.map(\.overallScore).reduce(0, +) / Double(monthScores.count)
+            guard let labelDate = calendar.date(from: DateComponents(year: displayYear, month: month, day: 15, hour: 12)) else {
+                return nil
+            }
+            let monthName = monthFormatter.string(from: labelDate)
+            return (
+                month: month,
+                labelDate: labelDate,
+                labelY: 2.0,
+                label: "Ø \(monthName) \(String(format: "%.2f", average))"
+            )
         }
     }
 
