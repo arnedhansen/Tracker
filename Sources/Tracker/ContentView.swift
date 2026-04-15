@@ -682,6 +682,15 @@ private struct NumericMetricCell: View {
     private let heatMid = Color(red: 1.0, green: 1.0, blue: 1.0)
     private let heatHighSoft = Color(red: 0.72, green: 1.0, blue: 0.72)
     private let heatHighDark = Color(red: 0.34, green: 0.78, blue: 0.34)
+    /*
+     Alternative palette (kept for reuse):
+     private let heatLowRed = Color(red: 0.96, green: 0.10, blue: 0.12)
+     private let heatOrange = Color(red: 0.99, green: 0.54, blue: 0.14)
+     private let heatYellow = Color(red: 0.99, green: 0.91, blue: 0.45)
+     private let heatYellowGreen = Color(red: 0.74, green: 0.90, blue: 0.28)
+     private let heatGreen = Color(red: 0.36, green: 0.86, blue: 0.24)
+     private let heatSuperGreen = Color(red: 0.18, green: 0.78, blue: 0.18)
+     */
     @State private var text: String
     @State private var typedBuffer = ""
     @State private var shouldReplaceOnNextDigit = true
@@ -862,6 +871,27 @@ private struct NumericMetricCell: View {
 
         let k = (t - highExtremeStart) / (1.0 - highExtremeStart)
         return blendedColor(from: heatHighSoft, to: heatHighDark, fraction: k).opacity(0.78)
+        /*
+         Alternative mapping (kept for reuse):
+         if t < 0.22 {
+             let k = t / 0.22
+             return blendedColor(from: heatLowRed, to: heatOrange, fraction: k).opacity(0.80)
+         }
+         if t < 0.44 {
+             let k = (t - 0.22) / 0.22
+             return blendedColor(from: heatOrange, to: heatYellow, fraction: k).opacity(0.80)
+         }
+         if t < 0.66 {
+             let k = (t - 0.44) / 0.22
+             return blendedColor(from: heatYellow, to: heatYellowGreen, fraction: k).opacity(0.72)
+         }
+         if t < 0.84 {
+             let k = (t - 0.66) / 0.18
+             return blendedColor(from: heatYellowGreen, to: heatGreen, fraction: k).opacity(0.78)
+         }
+         let k = (t - 0.84) / 0.16
+         return blendedColor(from: heatGreen, to: heatSuperGreen, fraction: k).opacity(0.80)
+         */
     }
 
     private func blendedColor(from: Color, to: Color, fraction: Double) -> Color {
