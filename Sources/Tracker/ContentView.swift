@@ -10,6 +10,10 @@ struct ContentView: View {
     @EnvironmentObject private var store: TrackerStore
     @FocusState private var focusedCell: CellID?
     @State private var didScrollTableToBottom = false
+    @State private var rowFramesByIndex: [Int: CGRect] = [:]
+    @State private var tableViewportFrame: CGRect = .zero
+    @State private var lastAutoScrollTargetRow: Int?
+    @State private var lastAutoScrollTimestamp: Date = .distantPast
 
     private let tableMetrics: [TrackerMetric] = [
         .generalMood, .energy, .stress, .confidence, .bodyImage, .phdEnthusiasm, .work, .chores,
@@ -268,6 +272,7 @@ struct ContentView: View {
             : 24
         let overallWidth = metricCellWidth
         let tableWidth = dateColumnWidth + (CGFloat(tableMetrics.count) * metricCellWidth) + overallWidth
+        let scrollSpaceName = "tableVerticalScrollSpace"
 
         return VStack(alignment: .leading, spacing: 8) {
             ScrollViewReader { reader in
@@ -288,6 +293,14 @@ struct ContentView: View {
                                 )
                                 .id(date)
                                 .frame(width: tableWidth, alignment: .leading)
+                                .background(
+                                    GeometryReader { rowProxy in
+                                        Color.clear.preference(
+                                            key: RowFramePreferenceKey.self,
+                                            value: [rowIndex: rowProxy.frame(in: .named(scrollSpaceName))]
+                                        )
+                                    }
+                                )
                             }
                         } header: {
                             tablePinnedHeader(
@@ -300,12 +313,31 @@ struct ContentView: View {
                     }
                     .frame(width: tableWidth, alignment: .leading)
                 }
+                .coordinateSpace(name: scrollSpaceName)
+                .background(
+                    GeometryReader { viewportProxy in
+                        Color.clear.preference(
+                            key: TableViewportPreferenceKey.self,
+                            value: viewportProxy.frame(in: .named(scrollSpaceName))
+                        )
+                    }
+                )
+                .onPreferenceChange(RowFramePreferenceKey.self) { rowFramesByIndex = $0 }
+                .onPreferenceChange(TableViewportPreferenceKey.self) { tableViewportFrame = $0 }
                 .onAppear {
                     guard !didScrollTableToBottom, let lastDate = dates.last else { return }
                     didScrollTableToBottom = true
                     DispatchQueue.main.async {
                         reader.scrollTo(lastDate, anchor: .bottom)
                     }
+                }
+                .onChange(of: focusedCell) { _, newFocusedCell in
+                    maybeNudgeTableScroll(
+                        focusedCell: newFocusedCell,
+                        dates: dates,
+                        cellHeight: cellHeight,
+                        reader: reader
+                    )
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -342,6 +374,50 @@ struct ContentView: View {
             targetRow = max(0, row - 1)
         }
         focusedCell = CellID(row: targetRow, column: targetColumn)
+    }
+
+    private func maybeNudgeTableScroll(
+        focusedCell: CellID?,
+        dates: [Date],
+        cellHeight: CGFloat,
+        reader: ScrollViewProxy
+    ) {
+        guard let focusedCell else {
+            lastAutoScrollTargetRow = nil
+            return
+        }
+        guard let focusedRowFrame = rowFramesByIndex[focusedCell.row], !tableViewportFrame.isNull else { return }
+
+        let threshold = cellHeight * 0.5
+        let minInterval: TimeInterval = 0.08
+        var targetRow: Int?
+        var anchor: UnitPoint = .center
+
+        if focusedRowFrame.minY < tableViewportFrame.minY + threshold {
+            targetRow = max(0, focusedCell.row - 1)
+            anchor = .top
+        } else if focusedRowFrame.maxY > tableViewportFrame.maxY - threshold {
+            targetRow = min(dates.count - 1, focusedCell.row + 1)
+            anchor = .bottom
+        }
+
+        guard let targetRow else {
+            lastAutoScrollTargetRow = nil
+            return
+        }
+        guard targetRow != focusedCell.row else { return }
+
+        let now = Date()
+        if lastAutoScrollTargetRow == targetRow,
+           now.timeIntervalSince(lastAutoScrollTimestamp) < minInterval {
+            return
+        }
+
+        lastAutoScrollTargetRow = targetRow
+        lastAutoScrollTimestamp = now
+        withAnimation(.easeOut(duration: 0.12)) {
+            reader.scrollTo(dates[targetRow], anchor: anchor)
+        }
     }
 
     private func tableHeaderCell(_ title: String, width: CGFloat) -> some View {
@@ -523,6 +599,22 @@ struct ContentView: View {
             .frame(maxWidth: .infinity)
             .frame(height: 26)
             .background(navy)
+    }
+}
+
+private struct RowFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [Int: CGRect] = [:]
+
+    static func reduce(value: inout [Int: CGRect], nextValue: () -> [Int: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
+private struct TableViewportPreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
     }
 }
 
