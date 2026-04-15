@@ -30,6 +30,8 @@ struct ContentView: View {
     private let lime = Color(red: 0.78, green: 0.84, blue: 0.29)
     private let barBlue = Color(red: 0.29, green: 0.46, blue: 0.76)
     private let sheetBg = Color(red: 0.94, green: 0.95, blue: 0.97)
+    private let overallPastelOrange = Color(red: 0.98, green: 0.76, blue: 0.56).opacity(0.40)
+    private let yGridStroke = StrokeStyle(lineWidth: 0.45, dash: [6, 4])
 
     var body: some View {
         GeometryReader { proxy in
@@ -103,7 +105,7 @@ struct ContentView: View {
                     BarMark(
                         x: .value("Date", point.date),
                         y: .value("Overall", point.overallScore),
-                        width: .fixed(2.8)
+                        width: .fixed(3.6)
                     )
                     .foregroundStyle(barBlue)
                     .zIndex(0)
@@ -119,8 +121,8 @@ struct ContentView: View {
             .chartXScale(domain: yearDomain)
             .chartYAxis {
                 AxisMarks(position: .leading, values: Array(1...10)) { value in
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.8))
-                        .foregroundStyle(Color.gray.opacity(0.35))
+                    AxisGridLine(stroke: yGridStroke)
+                        .foregroundStyle(Color.gray.opacity(0.20))
                     AxisTick()
                     AxisValueLabel()
                         .foregroundStyle(navy)
@@ -128,12 +130,16 @@ struct ContentView: View {
                 }
             }
             .chartXAxis {
-                AxisMarks(values: monthTickDates) { value in
-                    AxisGridLine()
-                    AxisTick()
+                AxisMarks(preset: .aligned, values: monthMidTickDates) { _ in
                     AxisValueLabel(format: .dateTime.month(.abbreviated))
                         .foregroundStyle(navy)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 14, weight: .bold))
+                }
+                AxisMarks(preset: .inset, values: everyFifthDayTickDates) { _ in
+                    AxisTick()
+                    AxisValueLabel(format: .dateTime.day())
+                        .foregroundStyle(navy)
+                        .font(.system(size: 9, weight: .bold))
                 }
             }
             .chartPlotStyle { plotArea in
@@ -171,14 +177,14 @@ struct ContentView: View {
                             } label: {
                                 HStack {
                                     Text(group.title)
-                                        .font(.caption.weight(.bold).smallCaps())
+                                        .font(.callout.weight(.bold))
                                         .foregroundStyle(lime)
                                     Spacer()
                                     Image(systemName: expandedGroups.contains(group.title) ? "chevron.down" : "chevron.right")
                                         .foregroundStyle(lime)
                                 }
                                 .padding(.horizontal, 10)
-                                .frame(height: 26)
+                                .frame(height: 20)
                                 .background(navy)
                             }
                             .buttonStyle(.plain)
@@ -187,39 +193,47 @@ struct ContentView: View {
                                 ForEach(group.metrics, id: \.rawValue) { metric in
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(metric.rawValue)
-                                            .font(.caption2.weight(.bold).smallCaps())
+                                            .font(.callout.weight(.bold))
                                             .foregroundStyle(navy)
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
                                             .frame(maxWidth: .infinity, alignment: .center)
-                                            .frame(minHeight: 19)
+                                            .frame(minHeight: 18)
                                             .background(lime)
                                             .overlay(Rectangle().stroke(navy.opacity(0.2), lineWidth: 0.5))
                                         Chart(store.scoredEntries) { point in
                                             BarMark(
                                                 x: .value("Date", point.date),
-                                                y: .value(metric.rawValue, valueForMetric(metric, on: point.id)),
-                                                width: .fixed(3.2)
+                                                yStart: .value("Baseline", 1),
+                                                yEnd: .value(metric.rawValue, valueForMetric(metric, on: point.id)),
+                                                width: .fixed(1.6)
                                             )
                                             .foregroundStyle(barBlue)
                                         }
-                                        .chartYScale(domain: 1...10)
+                                        .chartYScale(domain: 1...10.6)
                                         .chartXScale(domain: yearDomain)
                                         .chartYAxis {
-                                            AxisMarks(position: .leading, values: Array(1...10)) { value in
-                                                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.7))
-                                                    .foregroundStyle(Color.gray.opacity(0.33))
+                                            AxisMarks(position: .leading, values: [1, 5, 10]) { _ in
+                                                AxisGridLine(stroke: yGridStroke)
+                                                    .foregroundStyle(Color.gray.opacity(0.20))
                                                 AxisTick()
                                                 AxisValueLabel()
-                                                    .font(.system(size: 7.5))
+                                                    .font(.system(size: 5))
                                                     .foregroundStyle(navy)
                                             }
                                         }
                                         .chartXAxis {
-                                            AxisMarks(values: monthTickDates) { value in
-                                                AxisTick()
+                                            AxisMarks(values: miniMonthTickDates) { _ in
                                                 AxisValueLabel(format: .dateTime.month(.abbreviated))
-                                                    .font(.system(size: 8))
+                                                    .font(.system(size: 6))
                                                     .foregroundStyle(navy)
                                             }
+                                            AxisMarks(values: everyFifthDayTickDates) { _ in
+                                                AxisTick()
+                                            }
+                                        }
+                                        .chartPlotStyle { plotArea in
+                                            plotArea.clipped()
                                         }
                                         .frame(height: 74)
                                         .padding(.horizontal, 6)
@@ -244,17 +258,20 @@ struct ContentView: View {
         }
         let dates = allDatesAscending()
         let dateColumnWidth: CGFloat = 106
-        let overallWidth: CGFloat = 39
         let cellHeight: CGFloat = 38
-        let minimumMetricWidth: CGFloat = 30
-        let targetWidth = max(availableWidth, 700)
-        let adaptiveMetricWidth = floor((targetWidth - dateColumnWidth - overallWidth) / CGFloat(tableMetrics.count))
-        let metricCellWidth = max(minimumMetricWidth, adaptiveMetricWidth)
+        /// Inner width after the panel’s own horizontal padding (see `.padding(12)` below).
+        let contentWidth = max(availableWidth - 24, 280)
+        let numericColumnsCount = CGFloat(tableMetrics.count + 1)
+        let metricsTotalWidth = max(contentWidth - dateColumnWidth, 0)
+        let metricCellWidth = metricsTotalWidth > 0
+            ? metricsTotalWidth / numericColumnsCount
+            : 24
+        let overallWidth = metricCellWidth
         let tableWidth = dateColumnWidth + (CGFloat(tableMetrics.count) * metricCellWidth) + overallWidth
 
         return VStack(alignment: .leading, spacing: 8) {
             ScrollViewReader { reader in
-                ScrollView([.vertical, .horizontal]) {
+                ScrollView(.vertical) {
                     LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                         Section {
                             ForEach(Array(dates.enumerated()), id: \.element) { rowIndex, date in
@@ -281,7 +298,7 @@ struct ContentView: View {
                             .frame(width: tableWidth, alignment: .leading)
                         }
                     }
-                    .frame(minWidth: tableWidth, maxWidth: .infinity, alignment: .leading)
+                    .frame(width: tableWidth, alignment: .leading)
                 }
                 .onAppear {
                     guard !didScrollTableToBottom, let lastDate = dates.last else { return }
@@ -292,9 +309,11 @@ struct ContentView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .clipped()
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .clipped()
         .background(RoundedRectangle(cornerRadius: 10).fill(sheetBg))
     }
 
@@ -368,6 +387,7 @@ struct ContentView: View {
             ForEach(Array(tableMetrics.enumerated()), id: \.offset) { colIndex, metric in
                 NumericMetricCell(
                     value: entry.value(for: metric),
+                    isReadOnly: ScoringEngine.isLegacySubjectiveSyncDate(date) && metric == .subjectiveRating,
                     isFocused: focusedCell == CellID(row: rowIndex, column: colIndex),
                     onFocus: { focusedCell = CellID(row: rowIndex, column: colIndex) },
                     onCommit: { newValue in
@@ -383,7 +403,7 @@ struct ContentView: View {
                 .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .foregroundStyle(Color(red: 0.2, green: 0.2, blue: 0.22))
                 .frame(width: overallWidth, height: cellHeight)
-                .background(rowMissing ? Color.blue.opacity(0.08) : Color.white)
+                .background(overallPastelOrange)
                 .overlay(Rectangle().stroke(Color.blue.opacity(0.2), lineWidth: 0.5))
         }
     }
@@ -418,7 +438,7 @@ struct ContentView: View {
 
     private func allDatesAscending() -> [Date] {
         let calendar = Calendar.current
-        let latest = calendar.startOfDay(for: Date().addingTimeInterval(-86400))
+        let latest = calendar.startOfDay(for: Date())
         let earliest = calendar.startOfDay(for: store.entries.map(\.date).min() ?? latest)
         var dates: [Date] = []
         var date = earliest
@@ -459,6 +479,43 @@ struct ContentView: View {
         }
     }
 
+    private var monthMidTickDates: [Date] {
+        let calendar = Calendar.current
+        return monthTickDates.compactMap { start in
+            guard let monthRange = calendar.range(of: .day, in: .month, for: start) else { return nil }
+            let midDay = max(1, monthRange.count / 2)
+            return calendar.date(from: DateComponents(
+                year: calendar.component(.year, from: start),
+                month: calendar.component(.month, from: start),
+                day: midDay
+            ))
+        }
+    }
+
+    private var everyFifthDayTickDates: [Date] {
+        let calendar = Calendar.current
+        let start = yearDomain.lowerBound
+        let end = yearDomain.upperBound
+        var ticks: [Date] = []
+        var cursor = start
+        while cursor <= end {
+            let day = calendar.component(.day, from: cursor)
+            if day % 5 == 0 {
+                ticks.append(cursor)
+            }
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
+            cursor = next
+        }
+        return ticks
+    }
+
+    private var miniMonthTickDates: [Date] {
+        let calendar = Calendar.current
+        return [1, 4, 7, 10].compactMap { month in
+            calendar.date(from: DateComponents(year: displayYear, month: month, day: 15))
+        }
+    }
+
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
             .font(.title3.weight(.bold).smallCaps())
@@ -483,7 +540,10 @@ private struct NumericMetricCell: View {
     private let heatHighSoft = Color(red: 0.72, green: 1.0, blue: 0.72)
     private let heatHighDark = Color(red: 0.34, green: 0.78, blue: 0.34)
     @State private var text: String
+    @State private var typedBuffer = ""
+    @State private var shouldReplaceOnNextDigit = true
     let value: Double
+    var isReadOnly: Bool = false
     let isFocused: Bool
     let onFocus: () -> Void
     let onCommit: (Double) -> Void
@@ -491,12 +551,14 @@ private struct NumericMetricCell: View {
 
     init(
         value: Double,
+        isReadOnly: Bool = false,
         isFocused: Bool,
         onFocus: @escaping () -> Void,
         onCommit: @escaping (Double) -> Void,
         onNavigate: @escaping (MoveDirection) -> Void
     ) {
         self.value = value
+        self.isReadOnly = isReadOnly
         self.isFocused = isFocused
         self.onFocus = onFocus
         self.onCommit = onCommit
@@ -507,57 +569,133 @@ private struct NumericMetricCell: View {
     var body: some View {
         ZStack {
             heatColor(for: value)
-            TextField("", text: $text)
+            Text(text)
                 .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .multilineTextAlignment(.center)
                 .foregroundStyle(Color(red: 0.15, green: 0.15, blue: 0.15))
-                .textFieldStyle(.plain)
-                .textSelection(.disabled)
-                .padding(.horizontal, 4)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(Rectangle().stroke(isFocused ? Color.blue : Color.blue.opacity(0.2), lineWidth: isFocused ? 1.5 : 0.5))
+        .contentShape(Rectangle())
+        .focusable()
+        .overlay(Rectangle().stroke(isFocused && !isReadOnly ? Color.blue : Color.blue.opacity(0.2), lineWidth: isFocused && !isReadOnly ? 1.5 : 0.5))
         .onTapGesture {
+            guard !isReadOnly else { return }
+            shouldReplaceOnNextDigit = true
+            typedBuffer = ""
             onFocus()
         }
         .onAppear { text = String(format: "%.0f", value.rounded()) }
-        .onChange(of: value) { _, newValue in text = String(format: "%.0f", newValue.rounded()) }
+        .onChange(of: value) { _, newValue in
+            text = String(format: "%.0f", newValue.rounded())
+            if !isFocused {
+                shouldReplaceOnNextDigit = true
+                typedBuffer = ""
+            }
+        }
+        .onChange(of: isFocused) { _, focused in
+            if focused {
+                shouldReplaceOnNextDigit = true
+                typedBuffer = ""
+            } else if !isReadOnly {
+                commitValue()
+            } else {
+                text = String(format: "%.0f", value.rounded())
+                shouldReplaceOnNextDigit = true
+                typedBuffer = ""
+            }
+        }
+        .onKeyPress { keyPress in
+            guard isFocused, !isReadOnly else { return .ignored }
+            return handleCharacterKeyPress(keyPress)
+        }
         .onSubmit {
-            commitValue()
+            if !isReadOnly { commitValue() }
             onNavigate(.right)
         }
         .onKeyPress(.tab) {
-            commitValue()
+            if !isReadOnly { commitValue() }
             onNavigate(.right)
             return .handled
         }
         .onKeyPress(.upArrow) {
-            commitValue()
+            if !isReadOnly { commitValue() }
             onNavigate(.up)
             return .handled
         }
         .onKeyPress(.downArrow) {
-            commitValue()
+            if !isReadOnly { commitValue() }
             onNavigate(.down)
             return .handled
         }
         .onKeyPress(.leftArrow) {
             onNavigate(.left)
+            shouldReplaceOnNextDigit = true
+            typedBuffer = ""
             return .handled
         }
         .onKeyPress(.rightArrow) {
             onNavigate(.right)
+            shouldReplaceOnNextDigit = true
+            typedBuffer = ""
             return .handled
         }
     }
 
+    private func handleCharacterKeyPress(_ keyPress: KeyPress) -> KeyPress.Result {
+        guard let character = keyPress.characters.first else { return .ignored }
+
+        if character.isWholeNumber {
+            if shouldReplaceOnNextDigit {
+                typedBuffer = String(character)
+                shouldReplaceOnNextDigit = false
+            } else if typedBuffer.count < 2 {
+                typedBuffer.append(character)
+            } else {
+                typedBuffer = String(character)
+            }
+            applyBufferIfValid()
+            return .handled
+        }
+
+        if character == "\u{8}" || character == "\u{7F}" {
+            if shouldReplaceOnNextDigit {
+                typedBuffer = text
+                shouldReplaceOnNextDigit = false
+            }
+            if !typedBuffer.isEmpty {
+                typedBuffer.removeLast()
+            }
+            if typedBuffer.isEmpty {
+                text = ""
+            } else {
+                applyBufferIfValid()
+            }
+            return .handled
+        }
+
+        return .ignored
+    }
+
+    private func applyBufferIfValid() {
+        guard !isReadOnly else { return }
+        guard let parsed = Double(typedBuffer.replacingOccurrences(of: ",", with: ".")) else { return }
+        let clamped = min(max(parsed, 1), 10).rounded()
+        text = String(format: "%.0f", clamped)
+        onCommit(clamped)
+    }
+
     private func commitValue() {
+        guard !isReadOnly else { return }
         guard let parsed = Double(text.replacingOccurrences(of: ",", with: ".")) else {
             text = String(format: "%.0f", value.rounded())
+            shouldReplaceOnNextDigit = true
+            typedBuffer = ""
             return
         }
         let clamped = min(max(parsed, 1), 10).rounded()
         text = String(format: "%.0f", clamped)
+        typedBuffer = text
+        shouldReplaceOnNextDigit = true
         onCommit(clamped)
     }
 
@@ -617,7 +755,7 @@ private struct NumericMetricCell: View {
 private struct YearProgressDonut: View {
     let progress: Double
     let tintColor: Color
-    private let ringLineWidth: CGFloat = 10
+    private let ringLineWidth: CGFloat = 16
 
     var body: some View {
         ZStack {
@@ -633,7 +771,7 @@ private struct YearProgressDonut: View {
                 .font(.title3.weight(.heavy))
                 .foregroundStyle(Color(red: 0.25, green: 0.25, blue: 0.28))
         }
-        .frame(width: 72, height: 72)
+        .frame(width: 162, height: 162)
         .padding(4)
         .background(Color.white.opacity(0.95))
         .clipShape(RoundedRectangle(cornerRadius: 8))

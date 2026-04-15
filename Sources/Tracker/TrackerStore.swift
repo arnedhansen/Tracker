@@ -26,7 +26,7 @@ final class TrackerStore: ObservableObject {
     var missingDates: [Date] {
         guard let earliest = entries.map(\.date).min() else { return [selectedDate] }
         let calendar = Calendar.current
-        let end = calendar.startOfDay(for: Date().addingTimeInterval(-86400))
+        let end = calendar.startOfDay(for: Date())
         var date = calendar.startOfDay(for: earliest)
         var missing: [Date] = []
         let existing = Set(entries.map { calendar.startOfDay(for: $0.date) })
@@ -42,13 +42,21 @@ final class TrackerStore: ObservableObject {
 
     func entry(for date: Date) -> DailyEntry {
         let target = Calendar.current.startOfDay(for: date)
+        var entry: DailyEntry
         if let existing = entries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: target) }) {
-            return existing
+            entry = existing
+        } else {
+            entry = DailyEntry(date: target)
         }
-        return DailyEntry(date: target)
+        if ScoringEngine.isLegacySubjectiveSyncDate(entry.date) {
+            entry.subjectiveRating = ScoringEngine.subjectiveRatingSyncedToOverall(for: entry)
+        }
+        return entry
     }
 
     func save(entry: DailyEntry) {
+        var entry = entry
+        syncLegacySubjectiveIfNeeded(&entry)
         if let idx = entries.firstIndex(where: { Calendar.current.isDate($0.date, inSameDayAs: entry.date) }) {
             entries[idx] = entry
         } else {
@@ -117,6 +125,15 @@ final class TrackerStore: ObservableObject {
             loadedByDay[day] = e
         }
         entries = loadedByDay.values.sorted { $0.date < $1.date }
+        var changed = false
+        for i in entries.indices where ScoringEngine.isLegacySubjectiveSyncDate(entries[i].date) {
+            let synced = ScoringEngine.subjectiveRatingSyncedToOverall(for: entries[i])
+            if abs(entries[i].subjectiveRating - synced) > 0.000_001 {
+                entries[i].subjectiveRating = synced
+                changed = true
+            }
+        }
+        if changed { persist() }
     }
 
     private func persist() {
@@ -136,6 +153,11 @@ final class TrackerStore: ObservableObject {
         }
         let csv = ([header] + rows).joined(separator: "\n")
         try? csv.write(toFile: csvPath, atomically: true, encoding: .utf8)
+    }
+
+    private func syncLegacySubjectiveIfNeeded(_ entry: inout DailyEntry) {
+        guard ScoringEngine.isLegacySubjectiveSyncDate(entry.date) else { return }
+        entry.subjectiveRating = ScoringEngine.subjectiveRatingSyncedToOverall(for: entry)
     }
 
     private func d(_ value: String?) -> Double { Double(value ?? "") ?? 5.0 }
