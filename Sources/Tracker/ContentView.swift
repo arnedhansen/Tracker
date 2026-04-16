@@ -130,7 +130,7 @@ struct ContentView: View {
                         y: .value("Month Label Baseline", monthPoint.labelY)
                     )
                     .foregroundStyle(.clear)
-                    .annotation(position: .top, spacing: 6) {
+                    .annotation(position: .bottom, spacing: 6) {
                         Text(monthPoint.label)
                             .font(.system(size: 11, weight: .bold, design: .rounded))
                             .foregroundStyle(lime)
@@ -237,8 +237,8 @@ struct ContentView: View {
                     progress: yearProgress,
                     tintColor: lime
                 )
-                .padding(.top, 10)
-                .padding(.trailing, 10)
+                .padding(.top, 18)
+                .padding(.trailing, 18)
                 .allowsHitTesting(false)
             }
         }
@@ -896,7 +896,7 @@ struct ContentView: View {
             return (
                 month: month,
                 labelDate: labelDate,
-                labelY: 2.0,
+                labelY: 10.0,
                 label: "Ø \(monthName) \(String(format: "%.2f", average))"
             )
         }
@@ -1365,7 +1365,7 @@ private struct NumericMetricCell: View {
 private struct YearProgressDonut: View {
     let progress: Double
     let tintColor: Color
-    private let ringLineWidth: CGFloat = 16
+    private let ringLineWidth: CGFloat = 17.6
 
     var body: some View {
         ZStack {
@@ -1381,7 +1381,7 @@ private struct YearProgressDonut: View {
                 .font(.title3.weight(.heavy))
                 .foregroundStyle(Color(red: 0.25, green: 0.25, blue: 0.28))
         }
-        .frame(width: 162, height: 162)
+        .frame(width: 121.5, height: 121.5)
         .padding(4)
         .background(Color.white.opacity(0.95))
         .clipShape(RoundedRectangle(cornerRadius: 8))
