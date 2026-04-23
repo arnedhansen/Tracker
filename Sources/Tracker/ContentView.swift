@@ -31,6 +31,7 @@ struct ContentView: View {
         ("Physical Health", [.generalHealth, .sleep, .nutrition, .hydration, .alcoholDrugs]),
         ("Social", [.socialQuantity, .socialQuality])
     ]
+    private let correlationSectionTitle = "Correlations"
     @State private var expandedGroups: Set<String> = []
 
     private let navy = Color(red: 0.13, green: 0.23, blue: 0.36)
@@ -263,28 +264,13 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 10) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
+                    collapsibleSectionHeader(title: correlationSectionTitle)
+                    if expandedGroups.contains(correlationSectionTitle) {
+                        correlationPanel
+                    }
                     ForEach(groupSpecs, id: \.title) { group in
                         VStack(alignment: .leading, spacing: 6) {
-                            Button {
-                                if expandedGroups.contains(group.title) {
-                                    expandedGroups.remove(group.title)
-                                } else {
-                                    expandedGroups.insert(group.title)
-                                }
-                            } label: {
-                                HStack {
-                                    Text(group.title)
-                                        .font(.callout.weight(.bold))
-                                        .foregroundStyle(lime)
-                                    Spacer()
-                                    Image(systemName: expandedGroups.contains(group.title) ? "chevron.down" : "chevron.right")
-                                        .foregroundStyle(lime)
-                                }
-                                .padding(.horizontal, 10)
-                                .frame(height: 20)
-                                .background(navy)
-                            }
-                            .buttonStyle(.plain)
+                            collapsibleSectionHeader(title: group.title)
 
                             if expandedGroups.contains(group.title) {
                                 ForEach(group.metrics, id: \.rawValue) { metric in
@@ -345,6 +331,133 @@ struct ContentView: View {
         }
         .padding(8)
         .background(RoundedRectangle(cornerRadius: 10).fill(sheetBg))
+    }
+
+    private var correlationSummary: CorrelationEngine.Summary {
+        CorrelationEngine.summary(entries: store.entries, metrics: tableMetrics, strongestPairLimit: 8)
+    }
+
+    private var correlationPanel: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Pearson r (N=\(correlationSummary.dayCount) days)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(navy.opacity(0.8))
+
+            correlationHeatmap
+
+            Text("Strongest pairs")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(navy)
+            ForEach(correlationSummary.strongestPairs.prefix(6)) { pair in
+                Text(
+                    "\(shortLabel(pair.left.rawValue)) - \(shortLabel(pair.right.rawValue)): \(String(format: "%.2f", pair.correlation))"
+                )
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundStyle(navy.opacity(0.9))
+            }
+
+            Text("Correlation with overall")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(navy)
+            ForEach(correlationSummary.correlationWithOverall.prefix(6)) { item in
+                HStack(spacing: 6) {
+                    Text(shortLabel(item.metric.rawValue))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(navy.opacity(0.85))
+                    Spacer()
+                    Text(String(format: "%.2f", item.correlation))
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(navy)
+                }
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(Color.white)
+        .overlay(Rectangle().stroke(navy.opacity(0.15), lineWidth: 1))
+    }
+
+    private var correlationHeatmap: some View {
+        let summary = correlationSummary
+        let cellSize: CGFloat = 18
+        return ScrollView([.horizontal, .vertical]) {
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 1) {
+                    Color.clear.frame(width: 54, height: 16)
+                    ForEach(summary.metrics, id: \.rawValue) { metric in
+                        Text(shortLabel(metric.rawValue))
+                            .font(.system(size: 6, weight: .bold))
+                            .foregroundStyle(navy)
+                            .frame(width: cellSize, height: 16)
+                            .lineLimit(1)
+                    }
+                }
+                ForEach(Array(summary.metrics.enumerated()), id: \.offset) { rowIndex, rowMetric in
+                    HStack(spacing: 1) {
+                        Text(shortLabel(rowMetric.rawValue))
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(navy)
+                            .frame(width: 54, alignment: .leading)
+                            .lineLimit(1)
+                        ForEach(summary.metrics.indices, id: \.self) { columnIndex in
+                            let value = summary.matrix[rowIndex][columnIndex]
+                            Text(value.map { String(format: "%.2f", $0) } ?? "NA")
+                                .font(.system(size: 6, weight: .bold, design: .monospaced))
+                                .foregroundStyle(navy.opacity(0.85))
+                                .frame(width: cellSize, height: cellSize)
+                                .background(correlationColor(for: value))
+                                .overlay(Rectangle().stroke(navy.opacity(0.08), lineWidth: 0.5))
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, 3)
+        }
+        .frame(height: 175)
+        .background(Color.white)
+    }
+
+    private func collapsibleSectionHeader(title: String) -> some View {
+        Button {
+            if expandedGroups.contains(title) {
+                expandedGroups.remove(title)
+            } else {
+                expandedGroups.insert(title)
+            }
+        } label: {
+            HStack {
+                Text(title)
+                    .font(.callout.weight(.bold))
+                    .foregroundStyle(lime)
+                Spacer()
+                Image(systemName: expandedGroups.contains(title) ? "chevron.down" : "chevron.right")
+                    .foregroundStyle(lime)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 20)
+            .background(navy)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func correlationColor(for value: Double?) -> Color {
+        guard let value else { return Color.gray.opacity(0.12) }
+        let clamped = min(max(value, -1), 1)
+        if clamped < 0 {
+            let k = (clamped + 1.0)
+            return blendedColor(
+                from: Color(red: 0.10, green: 0.35, blue: 0.90),
+                to: Color.white,
+                fraction: k
+            )
+            .opacity(0.95)
+        }
+        return blendedColor(
+            from: Color.white,
+            to: Color(red: 0.86, green: 0.16, blue: 0.16),
+            fraction: clamped
+        )
+        .opacity(0.95)
     }
 
     private func csvLikeEntryGrid(availableWidth: CGFloat) -> some View {
